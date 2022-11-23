@@ -6,7 +6,6 @@ from string import ascii_uppercase
 import psutil
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox, QTreeWidgetItem, QProgressBar, QFileIconProvider
-from PyQt5.QtGui import QIcon
 
 from lyceum_project.ui_file import Ui_MainWindow
 
@@ -20,17 +19,16 @@ class Main(QMainWindow, Ui_MainWindow):
         self.comboBox.addItems(a)  # Добавление всех существующих дисков в comboBox
 
         self.icon_provider = QFileIconProvider()
-        self.msg = QMessageBox() # QMessageBox для вывода информации/ошибок
-        self.pushButton.clicked.connect(self.preparations) # Запуск анализа выбранной дирректории
+        self.msg = QMessageBox()  # QMessageBox для вывода информации/ошибок
+        self.pushButton.clicked.connect(self.preparations)  # Запуск анализа выбранной дирректории
 
         self.choose_text.hide()
         self.size_text.hide()
         self.occupied_text.hide()
         self.free_text.hide()
 
-
     def preparations(self):
-        if not self.comboBox.currentText(): # Если ничего не выбрано
+        if not self.comboBox.currentText():  # Если ничего не выбрано
             self.msg.setText("Выберите дирректорию")
             self.msg.show()
             return
@@ -80,24 +78,55 @@ class Main(QMainWindow, Ui_MainWindow):
         sz, tp = self.normal_value(free)
         self.free_value.setText(f"{sz:.1f}{tp}")
 
-        # Папка     Занятый_процент     Размер_на_диске     Дата_изменения
-        sz, tp = self.normal_value(used)
-        highest = QTreeWidgetItem([str(dr), "100%", f"{sz:.1f}{tp}",
-                                   datetime.datetime.fromtimestamp(os.stat(dr).st_atime).strftime("%d.%m.%Y %H:%m:%S")])
+        highest = self.create_item(dr, parent=None, per=100)
+        another = self.create_item('C:/Windows', parent=highest)
 
-        highest.setIcon(0, self._get_ico("C:"))
-        self.treeWidget.addTopLevelItem(highest)
-        self.treeWidget.setItemWidget(highest, 1, self.create_progress_bar(100))
+    def create_item(self, path, parent, per=None, tree=True):
+        """
+        :param path: Путь до рассматриваемой папки
+        :param parent:
+        :param per: Процент от занимаемого места, может быть установлен вручную
+        :return: QtreeWidget(путь_до_папки, )
+        """
 
-    def _get_ico(self, file_name=""):
-        icon = self.icon_provider.icon(QtCore.QFileInfo(file_name))
-        return icon
+        _, used, _, percent = psutil.disk_usage(path)
+        psutil.
+
+        if path.count('/') > 1:
+            name = path[path.rfind('/') + 1:]
+        else:
+            name = path
+
+        size_, type_ = self.normal_value(used)
+
+        if per is not None:
+            percent = per
+
+        if tree:
+            item_ = QTreeWidgetItem([str(name), f"{percent}%", f"{size_:.1f}{type_}",
+                                     datetime.datetime.fromtimestamp(os.stat(path).st_atime).strftime(
+                                         "%d.%m.%Y %H:%m:%S")])
+
+        item_.setIcon(0, self.get_ico(path))
+
+        if parent is None:
+            self.treeWidget.addTopLevelItem(item_)
+        else:
+            parent.addChild(item_)
+
+        self.treeWidget.setItemWidget(item_, 1, self.create_progress_bar(percent))
+        return item_
 
     def create_progress_bar(self, percent):
         pr = QProgressBar()
         pr.setValue(percent)
-        pr.setStyleSheet("QProgressBar{text-align: center;}")
+        pr.setStyleSheet("QProgressBar{text-align: center;active: 0}")
         return pr
+
+    def get_ico(self, file_name=""):
+        icon = self.icon_provider.icon(QtCore.QFileInfo(file_name))
+        return icon
+
 
 app = QApplication(sys.argv)
 M = Main()
