@@ -3,11 +3,11 @@ import sys
 import datetime
 from string import ascii_uppercase
 
-import psutil
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox, QTreeWidgetItem, QProgressBar, QFileIconProvider
 
 from lyceum_project.ui_file import Ui_MainWindow
+from lyceum_project.disk_usage import get_size
 
 
 class Main(QMainWindow, Ui_MainWindow):
@@ -67,7 +67,7 @@ class Main(QMainWindow, Ui_MainWindow):
 
     def build_tree(self, dr: str):
 
-        total, used, free, percent = psutil.disk_usage(dr)
+        total, used, free, percent = get_size(dr)
 
         sz, tp = self.normal_value(total)
         self.size_value.setText(f"{sz:.1f}{tp}")
@@ -81,7 +81,7 @@ class Main(QMainWindow, Ui_MainWindow):
         highest = self.create_item(dr, parent=None, per=100)
         another = self.create_item('C:/Windows', parent=highest)
 
-    def create_item(self, path, parent, per=None, tree=True):
+    def create_item(self, path, parent, per=None):
         """
         :param path: Путь до рассматриваемой папки
         :param parent:
@@ -89,8 +89,7 @@ class Main(QMainWindow, Ui_MainWindow):
         :return: QtreeWidget(путь_до_папки, )
         """
 
-        _, used, _, percent = psutil.disk_usage(path)
-        psutil.
+        _, used, _, percent = get_size(path)
 
         if path.count('/') > 1:
             name = path[path.rfind('/') + 1:]
@@ -102,11 +101,9 @@ class Main(QMainWindow, Ui_MainWindow):
         if per is not None:
             percent = per
 
-        if tree:
             item_ = QTreeWidgetItem([str(name), f"{percent}%", f"{size_:.1f}{type_}",
                                      datetime.datetime.fromtimestamp(os.stat(path).st_atime).strftime(
                                          "%d.%m.%Y %H:%m:%S")])
-
         item_.setIcon(0, self.get_ico(path))
 
         if parent is None:
