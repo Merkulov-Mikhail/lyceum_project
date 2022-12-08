@@ -2,7 +2,7 @@
 from database import db
 
 
-Dict = {}
+Dict = {None: [None, 0]}
 
 def normal_value(size: int):
     """
