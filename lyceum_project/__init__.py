@@ -1,8 +1,11 @@
+import sqlite3
 
-from database import db
 
+db = sqlite3.connect("main.db")
+cur = db.cursor()
 
 Dict = {None: [None, 0]}
+omega_secret = 'omega_secret_salt_for_hash_to_be_very_strong'
 
 def normal_value(size: int):
     """

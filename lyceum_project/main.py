@@ -1,17 +1,18 @@
 import datetime
-import psutil
 import os
 import stat
 import sys
+from hashlib import sha256
 from random import randint
 from string import ascii_uppercase
 from threading import Thread
 
 import psutil
 from PyQt5 import QtCore
-from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox, QTreeWidgetItem, QProgressBar, QFileIconProvider
+from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox, QTreeWidgetItem, QProgressBar, QFileIconProvider, \
+    QDialog, QDialogButtonBox, QLabel, QLineEdit, QVBoxLayout
 
-from lyceum_project import normal_value, Dict
+from lyceum_project import normal_value, Dict, omega_secret, cur, db
 from lyceum_project.ui_file import Ui_MainWindow
 
 
@@ -31,11 +32,57 @@ class MyQTreeWidgetItem(QTreeWidgetItem):
             return self.text(col) > other.text(col)
 
 
+class LoginDialog(QDialog):
+    def __init__(self, parent=None):
+        super(LoginDialog, self).__init__(parent)
+        dlg = QDialog()
+        dlg.setGeometry(500, 500, 200, 200)
+        label_1 = QLabel(parent=dlg)
+        label_1.setText("Имя пользователя")
+        label_1.move(10, 0)
+
+        self.login = QLineEdit(parent=dlg)
+        self.login.move(10, 25)
+        self.password = QLineEdit(parent=dlg)
+        self.password.move(10, 100)
+
+        label_2 = QLabel(parent=dlg)
+        label_2.setText("Пароль")
+        label_2.move(10, 75)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dlg)
+        buttons.move(10, 170)
+        layout = QVBoxLayout(self)
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        layout.addWidget(label_1)
+        layout.addWidget(self.login)
+        layout.addWidget(label_2)
+        layout.addWidget(self.password)
+        layout.addWidget(self.buttons)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+
+    def _getData(self):
+        return self.login.text(), self.password.text()
+
+    def getLogin(parent=None):
+        dialog = LoginDialog(parent)
+        res = dialog.exec_()
+        ans = dialog._getData()
+        return *ans, res == QDialog.Accepted
+
+
 class Main(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
-
+        log, pas, res = LoginDialog.getLogin()
+        if not res:
+            exit()
+        if cur.execute(f"SELECT password FROM users WHERE login='{log}'").fetchone()[0] == sha256(
+                (pas + omega_secret).encode()).hexdigest():
+            pass
+        else:
+            exit()
         a = [f"[{ext}:/] диск" for ext in ascii_uppercase if os.path.exists(f"{ext}:/")]
         a.append("[D:/lyceum]")
         self.comboBox.addItems(a)  # Добавление всех существующих дисков в comboBox
@@ -48,6 +95,12 @@ class Main(QMainWindow, Ui_MainWindow):
         self.size_text.hide()
         self.occupied_text.hide()
         self.free_text.hide()
+        # добавление/изменение пользователей
+        self.change_user_password.clicked.connect(self.change_password)
+        self.create_user.clicked.connect(self.new_user)
+
+        cur.execute("CREATE TABLE IF NOT EXISTS users(login TEXT, password TEXT)")
+        cur.execute("CREATE TABLE IF NOT EXISTS cool_data(login TEXT, date TEXT)")
 
     r"""
     |-----------------------------------------------|
@@ -150,7 +203,7 @@ class Main(QMainWindow, Ui_MainWindow):
                     thr.run()
 
         # Так как дерево создаётся рекурсивно, мы не знаем размер рассматриваемой папки, пока все подкаталоги не будут проверены
-        # Поэтому после прохода под всем подкаталогам, надо обновить процент занимаемого ими места в текущей папке
+        # Поэтому после прохода по всем подкаталогам, надо обновить процент занимаемого ими места в текущей папке
         for child in range(branch.childCount()):
             self._update_children(branch.child(child), Dict[branch][1], Dict[branch.child(child)][1])
         Dict[parent][1] += Dict[branch][1]
@@ -178,7 +231,7 @@ class Main(QMainWindow, Ui_MainWindow):
         :param path: Путь до рассматриваемой папки
         :param parent:
         :param per: Процент от занимаемого места, может быть установлен вручную
-        :return: QtreeWidget(путь_до_папки, )
+        :return: QtreeWidget(путь_до_папки)
         """
 
         used_ = used
@@ -216,6 +269,47 @@ class Main(QMainWindow, Ui_MainWindow):
 
     r"""
     |-----------------------------------------------|
+    | Second tab part, made for galochka            |
+    |-----------------------------------------------|
+    """
+
+    def new_user(self):
+        log, pas = self.lineEdit_4.text(), self.lineEdit_5.text()
+        if not (log and pas) or not self.check_login(log):
+            self.msg.setText("Данные введены некорректно")
+            self.msg.show()
+            return
+        if cur.execute(f"SELECT * FROM users WHERE login='{log}'").fetchall():
+            self.msg.setText("Пользователь существует")
+            self.msg.show()
+            return
+        cur.execute(
+            f"INSERT INTO users(login, password) VALUES('{log}', '{sha256((pas + omega_secret).encode()).hexdigest()}')")  # NOQA:501
+        cur.execute(
+            f"INSERT INTO cool_data(login, date) VALUES('{log}', '{datetime.datetime.today().strftime('%d.%m.%Y %H:%m:%S')}')")  # NOQA:501
+        db.commit()
+
+    def change_password(self):
+        log, prev, curr = self.lineEdit.text(), self.lineEdit_2.text(), self.lineEdit_3.text()
+        if not (log and prev and curr) or not self.check_login(log):
+            self.msg.setText("Данные введены некорректно")
+            self.msg.show()
+            return
+        if not cur.execute(f"SELECT * FROM users WHERE login='{log}'").fetchall():
+            self.msg.setText("Пользователь не существует")
+            self.msg.show()
+            return
+        if sha256((prev + omega_secret).encode()).hexdigest() != \
+                cur.execute(f"SELECT * FROM users WHERE login='{log}'").fetchone()[1]:  # NOQA:501
+            self.msg.setText("Старый пароль некорректный")
+            self.msg.show()
+            return
+        cur.execute(
+            f"UPDATE users SET password = '{sha256((curr + omega_secret).encode()).hexdigest()}' WHERE login='{log}'")  # NOQA:501
+        db.commit()
+
+    r"""
+    |-----------------------------------------------|
     | Secondary functions                           |
     |-----------------------------------------------|
     """
@@ -237,8 +331,19 @@ class Main(QMainWindow, Ui_MainWindow):
     def is_accessible(self, dr):
         return os.access(dr, os.R_OK & os.F_OK) and not (os.stat(dr).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN)
 
+    def check_login(self, lg: str):
+        # function for galochka
+        from string import digits, ascii_lowercase
 
-app = QApplication(sys.argv)
-M = Main()
-M.show()
-app.exec()
+        alphabet = set(digits + ascii_lowercase)
+        for letter in lg:
+            if letter not in alphabet:
+                return False
+        return True
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    M = Main()
+    M.show()
+    app.exec()
