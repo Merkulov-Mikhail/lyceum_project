@@ -10,7 +10,7 @@ from threading import Thread
 import psutil
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox, QTreeWidgetItem, QProgressBar, QFileIconProvider, \
-    QDialog, QDialogButtonBox, QLabel, QLineEdit, QVBoxLayout
+    QDialog, QDialogButtonBox, QLabel, QLineEdit, QVBoxLayout, QFileDialog
 
 from lyceum_project import normal_value, Dict, omega_secret, cur, db
 from lyceum_project.ui_file import Ui_MainWindow
@@ -75,6 +75,7 @@ class Main(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
+        self.base_QDialog_directory = "C:/"
         log, pas, res = LoginDialog.getLogin()
         if not res:
             exit()
@@ -84,7 +85,7 @@ class Main(QMainWindow, Ui_MainWindow):
         else:
             exit()
         a = [f"[{ext}:/] диск" for ext in ascii_uppercase if os.path.exists(f"{ext}:/")]
-        a.append("[D:/lyceum]")
+        a.append("<Выбрать файл>")
         self.comboBox.addItems(a)  # Добавление всех существующих дисков в comboBox
 
         self.icon_provider = QFileIconProvider()
@@ -117,10 +118,17 @@ class Main(QMainWindow, Ui_MainWindow):
         text = self.comboBox.currentText()
         try:
 
+            if text == "<Выбрать файл>":
+                dialog = QFileDialog()
+                dialog.setFileMode(dialog.DirectoryOnly)
+                file_name = dialog.getExistingDirectory(self, 'Open file', self.base_QDialog_directory)
+                text = f"[{file_name}]"
+                self.base_QDialog_directory = file_name
             if not os.path.exists(text[text.find("[") + 1:text.rfind("]")]):
                 self.msg.setText("Дирректория неккоректна")
                 self.msg.show()
                 return
+
 
             if len(text) <= 4:
                 d = psutil.disk_usage(text[1:-1])
@@ -150,7 +158,7 @@ class Main(QMainWindow, Ui_MainWindow):
 
             self.treeWidget.sortItems(4, QtCore.Qt.AscendingOrder)
         except Exception as ex:
-            print(ex)
+            print(ex.args)
             self.msg.setText(str(ex))
             self.msg.show()
 
@@ -163,9 +171,7 @@ class Main(QMainWindow, Ui_MainWindow):
     def build_tree(self, dr: str):
         self._recurion(None, dr)
         if len(dr) <= 3:
-            total, used, free, _ = psutil.disk_usage(dr)
-            sz, tp = normal_value(total)
-            self.size_value.setText(f"{sz:.1f}{tp}")
+            _, used, free, _ = psutil.disk_usage(dr)
 
             sz, tp = normal_value(used)
             self.occupied_value.setText(f"{sz:.1f}{tp}")
@@ -180,35 +186,39 @@ class Main(QMainWindow, Ui_MainWindow):
     |-----------------------------------------------|
     """
 
-    def _recurion(self, parent, dr):
-        self.treeWidget.update()
-        branch = self.create_item(dr, parent, 0)
-        if os.path.isfile(dr):
-            Dict[branch] = [parent, os.stat(dr).st_size]
-            branch.setText(2, self.to_human_vision(Dict[branch][1]))
-            branch.setText(4, f"{Dict[branch][1]}")
-            Dict[parent][1] += os.stat(dr).st_size
-            return
+    def _recurion(self, parent, directory):
 
         try:
+            dr = directory.replace("\\", "/")
+            self.treeWidget.update()
+            branch = self.create_item(dr, parent, 0)
+            if os.path.isfile(dr):
+                Dict[branch] = [parent, os.stat(dr).st_size]
+                branch.setText(2, self.to_human_vision(Dict[branch][1]))
+                branch.setText(4, f"{Dict[branch][1]}")
+                Dict[parent][1] += os.stat(dr).st_size
             files = os.scandir(dr)
-        except OSError:
+            Dict[branch] = [parent, 0]
+
+            for file_name in files:
+                if file_name.name[0].isalpha():
+                    if os.access(file_name, os.R_OK & os.F_OK):
+                        thr = Thread(target=self._recurion, kwargs={'parent': branch, 'directory': os.path.join(dr, file_name)})
+                        thr.run()
+            # Так как дерево создаётся рекурсивно, мы не знаем размер рассматриваемой папки, пока все подкаталоги не будут проверены
+            # Поэтому после прохода по всем подкаталогам, надо обновить процент занимаемого ими места в текущей папке
+            for child in range(branch.childCount()):
+                self._update_children(branch.child(child), Dict[branch][1], Dict[branch.child(child)][1])
+            try:
+               Dict[parent][1] += Dict[branch][1]
+            except:
+                Dict[parent][1] += 0
+            branch.setText(2, self.to_human_vision(Dict[branch][1]))
+            branch.setText(4, f"{Dict[branch][1]}")
+        except Exception as e: # В поисках бага я устал, так что вся функция теперь защищается except Exception, сейчас 1:40, 13.12.2022
+            print(e.args)
+            print(e)
             return
-        Dict[branch] = [parent, 0]
-
-        for file_name in files:
-            if file_name.name[0].isalpha():
-                if os.access(file_name, os.R_OK & os.F_OK):
-                    thr = Thread(target=self._recurion, kwargs={'parent': branch, 'dr': os.path.join(dr, file_name)})
-                    thr.run()
-
-        # Так как дерево создаётся рекурсивно, мы не знаем размер рассматриваемой папки, пока все подкаталоги не будут проверены
-        # Поэтому после прохода по всем подкаталогам, надо обновить процент занимаемого ими места в текущей папке
-        for child in range(branch.childCount()):
-            self._update_children(branch.child(child), Dict[branch][1], Dict[branch.child(child)][1])
-        Dict[parent][1] += Dict[branch][1]
-        branch.setText(2, self.to_human_vision(Dict[branch][1]))
-        branch.setText(4, f"{Dict[branch][1]}")
 
     def _update_children(self, item, total, curr):
         """
@@ -256,7 +266,7 @@ class Main(QMainWindow, Ui_MainWindow):
                                    f"{size_:.1f}{type_}",
                                    datetime.datetime.fromtimestamp(os.stat(path).st_atime).strftime(
                                        "%d.%m.%Y %H:%m:%S"),  # NOQA:501
-                                   f"{size_:.1f}{type_}"])
+                                   f"{size_}"])
         item_.setIcon(0, self.get_ico(path))
 
         if parent is None:
