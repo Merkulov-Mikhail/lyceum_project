@@ -129,7 +129,6 @@ class Main(QMainWindow, Ui_MainWindow):
                 self.msg.show()
                 return
 
-
             if len(text) <= 4:
                 d = psutil.disk_usage(text[1:-1])
                 self.size_value.setText(d.total)
@@ -190,15 +189,15 @@ class Main(QMainWindow, Ui_MainWindow):
 
         try:
             dr = directory.replace("\\", "/")
-            self.treeWidget.update()
             branch = self.create_item(dr, parent, 0)
             if os.path.isfile(dr):
                 Dict[branch] = [parent, os.stat(dr).st_size]
                 branch.setText(2, self.to_human_vision(Dict[branch][1]))
                 branch.setText(4, f"{Dict[branch][1]}")
                 Dict[parent][1] += os.stat(dr).st_size
-            files = os.scandir(dr)
+                return
             Dict[branch] = [parent, 0]
+            files = os.scandir(dr)
 
             for file_name in files:
                 if file_name.name[0].isalpha():
@@ -207,17 +206,26 @@ class Main(QMainWindow, Ui_MainWindow):
                         thr.run()
             # Так как дерево создаётся рекурсивно, мы не знаем размер рассматриваемой папки, пока все подкаталоги не будут проверены
             # Поэтому после прохода по всем подкаталогам, надо обновить процент занимаемого ими места в текущей папке
-            for child in range(branch.childCount()):
-                self._update_children(branch.child(child), Dict[branch][1], Dict[branch.child(child)][1])
-            try:
-               Dict[parent][1] += Dict[branch][1]
-            except:
-                Dict[parent][1] += 0
-            branch.setText(2, self.to_human_vision(Dict[branch][1]))
-            branch.setText(4, f"{Dict[branch][1]}")
+
+            if parent == None:
+                for child in range(branch.childCount()):
+                    self._update_children(branch.child(child), Dict[branch][1], Dict[branch.child(child)][1])
+            else:
+                for child in range(branch.childCount()):
+                    self._update_children(branch.child(child), Dict[branch][1], Dict[branch.child(child)][1])
+            if parent == None:
+                Dict[parent][1] += Dict[branch][1]
+                branch.setText(2, self.to_human_vision(Dict[branch][1]))
+                branch.setText(4, f"{Dict[branch][1]}")
+            else:
+                Dict[parent][1] += Dict[branch][1]
+                branch.setText(2, self.to_human_vision(Dict[branch][1]))
+                branch.setText(4, f"{Dict[branch][1]}")
         except Exception as e: # В поисках бага я устал, так что вся функция теперь защищается except Exception, сейчас 1:40, 13.12.2022
             print(e.args)
             print(e)
+            print(directory)
+            print(directory.replace("\\", "/"))
             return
 
     def _update_children(self, item, total, curr):
