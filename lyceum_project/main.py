@@ -9,6 +9,7 @@ from threading import Thread
 
 import psutil
 from PyQt5 import QtCore
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox, QTreeWidgetItem, QProgressBar, QFileIconProvider, \
     QDialog, QDialogButtonBox, QLabel, QLineEdit, QVBoxLayout, QFileDialog
 
@@ -99,6 +100,8 @@ class Main(QMainWindow, Ui_MainWindow):
         # добавление/изменение пользователей
         self.change_user_password.clicked.connect(self.change_password)
         self.create_user.clicked.connect(self.new_user)
+
+        self.icon.setPixmap(QPixmap("cool_image.jpg"))
 
         cur.execute("CREATE TABLE IF NOT EXISTS users(login TEXT, password TEXT)")
         cur.execute("CREATE TABLE IF NOT EXISTS cool_data(login TEXT, date TEXT)")
